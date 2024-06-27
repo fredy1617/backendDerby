@@ -350,4 +350,56 @@ class RolController extends Controller
         return 'data:image/png;base64,' . $base64;
     }  
 
+    public function update(Request $request, $id)
+    {
+        $data = $request->all();
+
+        //COLOCAR TODAS LAS PELEAS AL DEL DERBY 'condicion' => 'Pelear' 
+        Rol::where('derby_id', $id)->update(['condicion' => 'Pelear']);
+
+        foreach ($data as &$item) {
+            // Encontrar la pelea por su ID
+            $pelea = Rol::findOrFail($item['roundId']);
+
+            // Verificar si es un gallo extra
+            if ($pelea->gallo1_id == $pelea->gallo2_id && $item['gallo'] == 'gallo2') {
+                // Actualizar los datos de la pelea con condición 'EXTRA'
+                $pelea->update([
+                    'condicion' => 'EXTRA',
+                ]);
+            } else {
+                // Actualizar los datos de la pelea con el anillo proporcionado
+                $pelea->update([
+                    'condicion' => $item['anillo'],
+                ]);
+            }
+        }
+
+        $partidos = Matchs::where('derby_id', $id)->with('roosters')->get();
+
+        foreach ($partidos as $partido) {
+            $puntos = 0;
+            foreach ($partido->roosters as $gallo) {
+                // Buscar gallo en rosters donde $gallo->ring == condicion
+                $Buscar1 = Rol::where('condicion', $gallo->ring)->first();
+                $Buscar2 = Rol::where('gallo1_id', $gallo->id)->orWhere('gallo2_id', $gallo->id)->first();
+
+                if ($Buscar1) {
+                    $gallo['pelea'] = 'G'; // Si lo encuentra, asignar 'G' a pelea
+                    $puntos += 3;
+                } elseif ($Buscar2 && $Buscar2->condicion == 'Pelear') {
+                    $gallo['pelea'] = 'E'; // Si no lo encuentra pero es uno de los gallos participantes, asignar 'E' a pelea
+                    $puntos += 1;
+                } else {
+                    $gallo['pelea'] = 'P'; // Si no cumple ninguna condición anterior, asignar 'P' a pelea
+                }
+            }
+            $partido['puntos'] = $puntos;
+        }
+
+        // Ordenar los partidos por puntos de mayor a menor
+        $partidos = $partidos->sortByDesc('puntos')->values()->all();
+
+        return response()->json($partidos);
+    }
 }
