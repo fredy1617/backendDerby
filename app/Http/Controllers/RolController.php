@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Derbys;
 use App\Models\Matchs;
 use App\Models\Rol;
+use Dompdf\Dompdf;
 use Illuminate\Http\Request;
 use Illuminate\Log\Logger;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class RolController extends Controller
 {
@@ -295,5 +297,57 @@ class RolController extends Controller
 
         return response()->json($enfrentamientos);
     }
+
+    public function generatePDF($id){
+        $pdfContent = $this->PDF($id);
+
+        Storage::disk('public')->put('matches/Derby N°'. ($id) . '.pdf', $pdfContent);
+
+        return response($pdfContent, 200)->header('Content-Type', 'application/pdf');// Devolver el contenido del PDF
+    }
+
+    private function PDF($id)
+    {
+        $enfrentamientos = Rol::where('derby_id', $id)->with('gallo1', 'gallo2')->get();
+        
+        foreach ($enfrentamientos as $enfrentamiento) {
+            // Obtener el nombre del partido para gallo1
+            $match1_id = $enfrentamiento->gallo1->match_id;
+            $match1 = Matchs::select('name')->where('id', $match1_id)->first();
+            $enfrentamiento->gallo1->match_name = $match1 ? $match1->name : null;
+
+            // Obtener el nombre del partido para gallo2
+            $match2_id = $enfrentamiento->gallo2->match_id;
+            $match2 = Matchs::select('name')->where('id', $match2_id)->first();
+            $enfrentamiento->gallo2->match_name = $match2 ? $match2->name : null;
+        }
+
+        $derby = Derbys::findOrFail($id);
+
+        $logoImagePath = public_path('imgPDF/LogoDerby.png');
+        $logoImage = $this->getImageBase64($logoImagePath);// Convertir las imágenes a base64
+ 
+        $data = [
+            'logoImage' => $logoImage,
+            'enfrentamientos' => $enfrentamientos,
+            'derby' => $derby,
+        ];
+
+        $html = view('DERBYS A&J ROL (ENFRENTAMIENTOS)', $data)->render();
+
+        $dompdf = new Dompdf();
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        
+        return $dompdf->output();                     
+    }
+
+    private function getImageBase64($imagePath)
+    {
+        $file = file_get_contents($imagePath);
+        $base64 = base64_encode($file);
+        return 'data:image/png;base64,' . $base64;
+    }  
 
 }

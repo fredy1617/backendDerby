@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Derbys;
 use App\Models\Matchs;
 use App\Models\Roosters;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Dompdf\Dompdf;
 
 class MatchesController extends Controller
 {
@@ -90,6 +93,45 @@ class MatchesController extends Controller
         return response()->json(['message' => 'Partido actualizado exitosamente.'], 201);
     }
 
+    public function generatePDF($id){
+        $pdfContent = $this->PDF($id);
+
+        Storage::disk('public')->put('matches/Derby N°'. ($id) . '.pdf', $pdfContent);
+
+        return response($pdfContent, 200)->header('Content-Type', 'application/pdf');// Devolver el contenido del PDF
+    }
+
+    private function PDF($id)
+    {
+        $partidos = Matchs::where('derby_id', $id)->with('roosters')->get();
+
+        $derby = Derbys::find($id);
+
+        $logoImagePath = public_path('imgPDF/LogoDerby.png');
+        $logoImage = $this->getImageBase64($logoImagePath);// Convertir las imágenes a base64
+ 
+        $data = [
+            'logoImage' => $logoImage,
+            'partidos' => $partidos,
+            'derby' => $derby,
+        ];
+
+        $html = view('DERBYS A&J LISTA DE PARTIDOS', $data)->render();
+
+        $dompdf = new Dompdf();
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        
+        return $dompdf->output();                     
+    }
+
+    private function getImageBase64($imagePath)
+    {
+        $file = file_get_contents($imagePath);
+        $base64 = base64_encode($file);
+        return 'data:image/png;base64,' . $base64;
+    }
 
     public function destroy($id)
     {

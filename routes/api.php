@@ -11,3 +11,5 @@ Route::apiResource('derbys', DerbysController::class);
 Route::apiResource('matches', MatchesController::class);
 Route::apiResource('groups', GroupController::class);
 Route::apiResource('roles', RolController::class);
+Route::get('/generate-pdf-matches/{id}', [MatchesController::class, 'generatePDF']);
+Route::get('/generate-pdf-rol/{id}', [RolController::class, 'generatePDF']);
