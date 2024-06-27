@@ -120,7 +120,7 @@
       </div>
       <div class="column-2">
         <p class="blueTitle">DERBYS A&J</p>
-        <p class="title">LISTA DE PARTIDOS</p>
+        <p class="title">ROL (ENFRENTAMNIENTOS)</p>
       </div>      
     </header>
     <main>  
