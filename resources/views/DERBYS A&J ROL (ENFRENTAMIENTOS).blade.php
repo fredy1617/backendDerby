@@ -142,6 +142,7 @@
       </div>  
       <div class="row">
         <p class="title2">ROL (ENFRENTAMNIENTOS):</p>
+        <p>NOTA: Si en la ultima ronda existe una pelea subrayada en azul y los partidos, anillos y pesos son iguales eso significa que es una pelea con un gallo extra</p>
         @php
             $index = 0;
         @endphp
@@ -165,7 +166,7 @@
                     @php
                         $index++;
                     @endphp
-                    <tr>
+                    <tr style="@if ($round->gallo2->ring == $round->gallo1->ring) background-color: #40CCE8; @endif">
                         <td>{{ $index }}</td>
                         <td>{{ $round->gallo1->weight }}g</td>
                         <td>{{ $round->gallo1->ring }}</td>
