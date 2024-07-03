@@ -159,7 +159,7 @@ class RolController extends Controller
             foreach ($gallos as $x => $gallo2) {
                 // Evitar emparejar un gallo consigo mismo y verificar por partido, grupo y tolerancia igual
                 if ($index != $x && $gallo1['match_id'] != $gallo2['match_id'] &&
-                    abs($gallo1['weight'] - $gallo2['weight']) <= $tolerancia &&
+                    ($opcion == 3 || abs($gallo1['weight'] - $gallo2['weight']) <= $tolerancia) &&// AQUI SI LA OPCION ES 3 quitar esta linea
                     $gallo1['group_id'] !== $gallo2['group_id']) {
 
                     // Agregar ambos gallos a la lista de emparejados
@@ -224,10 +224,10 @@ class RolController extends Controller
             }
         }
 
-        return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
+        return $this->tryGeneratingEnfrentamientosToleranceTriple($derby, $sortingOptions);
     }
 
-    private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
+    private function tryGeneratingEnfrentamientosToleranceTriple($derby, $sortingOptions)
     {
         foreach ($sortingOptions as $option) {
             $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
@@ -244,11 +244,43 @@ class RolController extends Controller
 
             $Total_Peleas = count($gallos) / 2;
             if ($Total_Peleas == $no_enfrentamientos) {
-                LOGGER('ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA');
+                LOGGER('ENFRENTAMIENTOS GENERADOS CON TOLERANCIA AL TRIPLE');
                 //LOGGER($RONDAS);
                 
                 return response()->json([
                     'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS CON LA TOLERANCIA AL TRIPLE.',
+                    'RONDAS' => $RONDAS,
+                ]);
+            } else {
+                LOGGER("ERROR PELEAS SIN EMPAREJAR PARA LA OPCIÓN SIN TOLERANCIA: {$option[0]} {$option[1]}");
+            }
+        }
+
+        return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
+    }
+
+    private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
+    {
+        foreach ($sortingOptions as $option) {
+            $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
+            $RONDAS = $this->generateRondas($derby, $gallos);
+            $this->balanceRounds($RONDAS, 1, 0);
+            $this->balanceRounds($RONDAS, 1, 2);
+
+            $no_enfrentamientos = 0;
+            foreach ($RONDAS as $index => $ronda) {
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 3);
+                $RONDAS[$index]['PELEAS'] = $enfrentamientos;
+                $no_enfrentamientos += count($enfrentamientos);
+            }
+
+            $Total_Peleas = count($gallos) / 2;
+            if ($Total_Peleas == $no_enfrentamientos) {
+                LOGGER('ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA');
+                //LOGGER($RONDAS);
+                
+                return response()->json([
+                    'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA.',
                     'RONDAS' => $RONDAS,
                 ]);
             } else {
