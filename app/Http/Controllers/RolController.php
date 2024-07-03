@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Derbys;
 use App\Models\Matchs;
 use App\Models\Rol;
+use App\Models\Roosters;
 use Dompdf\Dompdf;
 use Illuminate\Http\Request;
 use Illuminate\Log\Logger;
@@ -14,6 +15,389 @@ use Illuminate\Support\Facades\Storage;
 class RolController extends Controller
 {
     public function store(Request $request)
+    {
+        $derby = Derbys::findOrFail($request->id);
+        $sortingOptions = [
+            ['weight', 'ASC'],
+            ['ring', 'ASC'],
+            ['name', 'ASC'],
+            ['id', 'ASC'],
+            ['match_id', 'ASC'],
+            ['match_id', 'DESC'],
+            ['id', 'DESC'],
+            ['name', 'DESC'],
+            ['weight', 'DESC'],
+            ['ring', 'DESC'],
+        ];
+        
+        // Eliminar roles anteriores del derby ANTES DE GENERAR UNO NUEVO
+        Rol::where('derby_id', $derby->id)->delete();
+
+        $response = $this->tryGeneratingEnfrentamientos($derby, $sortingOptions);
+
+        if ($response->getData()) {
+            LOGGER('ROL GENERADO CON EXITO');
+
+            // Recorrer cada ronda y generar las peleas en $this->agregarTabla($enfrentamientos, $derby->id);
+            $data = $response->getData()->RONDAS;
+            foreach ($data as $ronda) {
+                $enfrentamientos = $ronda->PELEAS;
+                $this->agregarTabla($enfrentamientos, $derby->id);
+            }
+            return response()->json([
+                'success' => true,
+                'message' => $response->getData()->message,
+                'RONDAS' => $response->getData()->RONDAS,
+            ]);
+        }
+
+        LOGGER('ERROR PELEAS SIN EMPAREJAR DESPUÉS DE INTENTAR TODAS LAS OPCIONES');
+        return response()->json([
+            'success' => false,
+            'message' => 'No se pudieron generar enfrentamientos emparejados después de intentar todas las opciones.',
+        ], 500);
+
+    }
+
+    private function generateRondas($derby, $gallos)
+    {
+        $Rondas = [];
+
+        // Iterar sobre cada posición de gallo en la ronda
+        for ($i = 0; $i < $derby->no_roosters; $i++) {
+            $ronda = [
+                'no' => $i, // Número de la ronda
+                'gallos' => [], // Inicializar arreglo para los gallos de esta ronda
+            ];
+
+            // Recorrer todos los gallos y agregar los gallos según el patrón deseado
+            foreach ($gallos as $index => $gallo) {
+                if ($index % $derby->no_roosters == $i) {
+                    $ronda['gallos'][] = [
+                        'id' => $gallo['id'],
+                        'ring' => $gallo['ring'],
+                        'weight' => $gallo['weight'],
+                        'match_id' => $gallo['match_id'],
+                        'group_id' => $gallo['group_id'],
+                    ];
+                }
+            }
+
+            // Agregar la ronda al arreglo de Rondas
+            $Rondas[] = $ronda;
+        }
+
+        return $Rondas;
+    }
+
+    private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = 1)    
+    {
+        $parejas = [];
+        $enfrentamientos = [];
+            
+        $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
+
+        return $enfrentamientos;
+    }
+
+
+    private function getInfoXRondas($derby, $by, $order)
+    {
+        $partidos = Matchs::select('id')
+                            ->where('derby_id', $derby->id)->get();
+        
+
+        foreach ($partidos as $partido) {
+            $gallos = Roosters::select('id', 'ring', 'weight', 'match_id')
+                            ->where('match_id', $partido->id)
+                            ->orderBy($by, $order)
+                            ->get();
+            $partido['gallos']=$gallos;            
+        }
+
+        $gallos = new Collection();
+            foreach ($partidos as $partido) {
+                $gallos = $gallos->merge($partido->gallos);
+        }
+
+        $no_gallos = count($gallos);// Calcular el número de gallos)
+
+        if ($no_gallos % 2 != 0) {
+            $gallos[] = [
+                'id' => '0',
+                'ring' => 'EXTRA',
+                'weight' => $derby->min_weight,
+                'match_id' => '0',
+                'group_id' => '0',
+            ];
+        }
+
+        //5.- RECORRER LOS GALLOS PARA AGREGAR GRUPO
+        $grupo = 1;
+        foreach ($gallos as $gallo) {
+            $grupo --;
+            // Fetch the group_id from the database or use the default $grupo value
+            $group_id = Matchs::where('matchs.id', $gallo['match_id'])
+            ->join('group_matches', 'matchs.id', '=', 'group_matches.match_id')
+            ->value('group_matches.group_id') ?? $grupo;
+
+            // Set the group_id for the current gallo
+            $gallo['group_id'] = $group_id;
+        }
+        return ($gallos);
+    }
+
+    private function matchGalls($derby, $gallos, $opcion = 1, $ronda = 0, &$parejas, &$enfrentamientos)
+    {
+        foreach ($gallos as $index => $gallo1) {
+            // Si el gallo ya está emparejado, continuar con el siguiente
+            if (in_array($gallo1, $parejas)) {
+                continue;
+            }
+        
+            foreach ($gallos as $x => $gallo2) {
+                // Evitar emparejar un gallo consigo mismo y verificar por partido, grupo y tolerancia igual
+                if ($index != $x && $gallo1['match_id'] != $gallo2['match_id'] &&
+                    ($opcion == 2 || abs($gallo1['weight'] - $gallo2['weight']) <= $derby->tolerance) &&// AQUI SI LA OPCION ES 2 quitar esta linea
+                    $gallo1['group_id'] !== $gallo2['group_id']) {
+
+                    // Agregar ambos gallos a la lista de emparejados
+                    $parejas[] = $gallo1;
+                    $parejas[] = $gallo2;
+
+                    if ($gallo1['id'] == 0) {
+                        $gallo1['id'] = $gallo2['id'];
+                    }
+                    if ($gallo2['id'] == 0) {
+                        $gallo2['id'] = $gallo1['id'];
+                    }
+                    $enfrentamientos[] = [
+                        'derby_id' => $derby->id,
+                        'ronda' => $ronda,
+                        'gallo1_id' => $gallo1['id'],
+                        'gallo2_id' => $gallo2['id'],
+                        'condicion' => 'Pelear',
+                    ];
+        
+                    // Eliminar ambos gallos del array original
+                    unset($gallos[$index]);
+                    unset($gallos[$x]);
+        
+                    // Salir del bucle interno después de emparejar un gallo
+                    break;
+                }
+            }
+        }  
+        //LOGGER('GALLOS RESTANTES: ');
+        //LOGGER($gallos);
+
+        return array_values($gallos);
+    }
+
+    private function tryGeneratingEnfrentamientos($derby, $sortingOptions)
+    {
+        foreach ($sortingOptions as $option) {
+            $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
+            $RONDAS = $this->generateRondas($derby, $gallos);
+            $this->balanceRounds($RONDAS, 1, 0);
+            $this->balanceRounds($RONDAS, 1, 2);
+
+            $no_enfrentamientos = 0;
+            foreach ($RONDAS as $index => $ronda) {
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1);
+                $RONDAS[$index]['PELEAS'] = $enfrentamientos;
+                $no_enfrentamientos += count($enfrentamientos);                
+            }
+
+            $Total_Peleas = count($gallos) / 2;
+            if ($Total_Peleas == $no_enfrentamientos) {
+                LOGGER('ENFRENTAMIENTOS GENERADOS CORRECTAMENTE');
+                //LOGGER($RONDAS);
+                
+                return response()->json([
+                    'message' => 'ENFRENTAMIENTOS GENERADOS CORRECTAMENTE',
+                    'RONDAS' => $RONDAS,
+                ]);
+            } else {
+                LOGGER("ERROR PELEAS SIN EMPAREJAR PARA LA OPCIÓN: {$option[0]} {$option[1]}");
+            }
+        }
+
+        return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
+    }
+
+    private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
+    {
+        foreach ($sortingOptions as $option) {
+            $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
+            $RONDAS = $this->generateRondas($derby, $gallos);
+            $this->balanceRounds($RONDAS, 1, 0);
+            $this->balanceRounds($RONDAS, 1, 2);
+
+            $no_enfrentamientos = 0;
+            foreach ($RONDAS as $index => $ronda) {
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 2);
+                $RONDAS[$index]['PELEAS'] = $enfrentamientos;
+                $no_enfrentamientos += count($enfrentamientos);
+            }
+
+            $Total_Peleas = count($gallos) / 2;
+            if ($Total_Peleas == $no_enfrentamientos) {
+                LOGGER('ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA');
+                //LOGGER($RONDAS);
+                
+                return response()->json([
+                    'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA.',
+                    'RONDAS' => $RONDAS,
+                ]);
+            } else {
+                LOGGER("ERROR PELEAS SIN EMPAREJAR PARA LA OPCIÓN SIN TOLERANCIA: {$option[0]} {$option[1]}");
+            }
+        }
+
+        return null;
+    }
+
+    private function balanceRounds(&$RONDAS, $sourceIndex, $targetIndex)
+    {
+        if (count($RONDAS[$targetIndex]['gallos']) % 2 != 0) {
+            if (isset($RONDAS[$sourceIndex]) && count($RONDAS[$sourceIndex]['gallos']) > 0) {
+                $galloMovido = array_shift($RONDAS[$sourceIndex]['gallos']);
+                $RONDAS[$targetIndex]['gallos'][] = $galloMovido;
+            }
+        }
+    }
+
+    private function generateEnfrentamientos2($derby, $gallos)    
+    {
+        $parejas = [];
+        $enfrentamientos = [];
+
+        $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'weight', 'DESC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'ring', 'DESC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'ring', 'ASC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'roosters.name', 'ASC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'roosters.name', 'DESC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'roosters.match_id', 'DESC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+
+        }
+        if (count($gallos) == 2 && ($gallos[0]['ring'] == 'EXTRA' || $gallos[1]['ring'] == 'EXTRA')) {
+            $this->addEnfrentamiento($derby, $gallos[0], $gallos[1], $enfrentamientos);
+            $gallos = [];
+        } else if (count($gallos) > 2) {
+            $gallos = $this->getInfo($derby, 'roosters.match_id', 'ASC');
+            $gallos = $this->matchGalls($derby, $gallos, $parejas, $enfrentamientos);
+
+        }
+
+        return $enfrentamientos;
+    }
+
+    private function addEnfrentamiento($derby, $gallo1, $gallo2, &$enfrentamientos)
+    {
+        if ($gallo1['id'] == 0) {
+            $gallo1['id'] = $gallo2['id'];
+        }
+        if ($gallo2['id'] == 0) {
+            $gallo2['id'] = $gallo1['id'];
+        }
+
+        $enfrentamientos[] = [
+            'derby_id' => $derby->id,
+            'ronda' => 0,
+            'gallo1_id' => $gallo1['id'],
+            'gallo2_id' => $gallo2['id'],
+            'condicion' => 'Pelear',
+            'gallo1_match' => $gallo1['match_id'],
+            'gallo2_match' => $gallo2['match_id'],
+        ];
+    }
+
+
+    private function getInfo($derby, $by, $order)
+    {
+        //2.- GALLOS DEL DERBY CON PARTIDO Y EN ORDEN PESO
+        $gallos = Roosters::select('roosters.id', 'ring', 'weight', 'match_id')
+                            ->join('matchs', 'roosters.match_id', '=', 'matchs.id')
+                            ->where('matchs.derby_id', $derby->id)
+                            ->orderBy($by, $order)
+                            ->get();
+
+        $no_rondas = $derby->no_roosters;// Calcular el número de rondas (igual al número de gallos del derby)
+        $no_gallos = count($gallos);// Calcular el número de gallos)
+
+        if ($no_gallos % 2 != 0) {
+            $gallos[] = [
+                'id' => '0',
+                'ring' => 'EXTRA',
+                'weight' => $derby->min_weight,
+                'match_id' => '0',
+                'group_id' => '0',
+            ];
+            $no_gallos = count($gallos); // Calcular el número de gallos
+        }
+       
+        LOGGER ('Total Rondas: '.$no_rondas);
+        LOGGER ('Total Gallos: '.$no_gallos);
+        
+
+        //5.- RECORRER LOS GALLOS PARA AGREGAR GRUPO
+        $grupo = 1;
+        foreach ($gallos as $gallo) {
+            $grupo --;
+            // Fetch the group_id from the database or use the default $grupo value
+            $group_id = Matchs::where('matchs.id', $gallo['match_id'])
+            ->join('group_matches', 'matchs.id', '=', 'group_matches.match_id')
+            ->value('group_matches.group_id') ?? $grupo;
+
+            // Set the group_id for the current gallo
+            $gallo['group_id'] = $group_id;
+        }
+
+        LOGGER ('Gallos: ');
+        //LOGGER ($gallos);
+        return $gallos->toArray();
+    }
+
+
+    public function store2(Request $request)
     {
         try{
             // Obtener el derby y sus partidos
@@ -59,8 +443,7 @@ class RolController extends Controller
                 }
             }
             
-            // Eliminar roles anteriores del derby
-            Rol::where('derby_id', $derby->id)->delete();
+           
 
             for ($i = 1; $i <= $no_rondas; $i++) {
                 $conditionApplied = false;
@@ -200,7 +583,7 @@ class RolController extends Controller
                 }
             }
 
-            $this->agregarTabla($enfrentamientos);
+            $this->agregarTabla($enfrentamientos, $derby->id);
             // Devolver respuesta exitosa con los enfrentamientos
             return response()->json([
                 'success' => true,
@@ -215,35 +598,24 @@ class RolController extends Controller
             ], 500);
         }
     }
-
-    private function agregarTabla($enfrentamientos)
+    
+    private function agregarTabla($enfrentamientos, $derby)
     {
-        // Ordenar por 'match1_id' y luego por 'match2_id' si 'match1_id' es igual
-        usort($enfrentamientos, function($a, $b) {
-            if ($a['match1_id'] === $b['match1_id']) {
-                return $a['match2_id'] <=> $b['match2_id'];
-            }
-            return $a['match1_id'] <=> $b['match1_id'];
-        });
-
-        // Registrar los datos ordenados de enfrentamientos
-        LOGGER($enfrentamientos);
-
         // Preparar los datos para insertar en la tabla 'rol'
-        $dataInstert = array_map(function($enfrentamiento) {
+        $dataInsert = array_map(function($enfrentamiento) {
             return [
-                'derby_id' => $enfrentamiento['derby_id'],
-                'ronda' => $enfrentamiento['ronda'],
-                'gallo1_id' => $enfrentamiento['gallo1_id'],
-                'gallo2_id' => $enfrentamiento['gallo2_id'],
-                'condicion' => $enfrentamiento['condicion'],
+                'derby_id' => $enfrentamiento->derby_id,
+                'ronda' => $enfrentamiento->ronda,
+                'gallo1_id' => $enfrentamiento->gallo1_id,
+                'gallo2_id' => $enfrentamiento->gallo2_id,
+                'condicion' => $enfrentamiento->condicion,
             ];
         }, $enfrentamientos);
 
         // Registrar los datos ordenados de enfrentamientos
-        LOGGER($dataInstert);
+        //LOGGER($dataInstert);
 
-        foreach ($dataInstert as $data) {
+        foreach ($dataInsert as $data) {
             $pelea = new Rol($data);
             $pelea->save();
         }

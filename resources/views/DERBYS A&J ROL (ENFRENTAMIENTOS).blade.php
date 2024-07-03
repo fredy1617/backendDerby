@@ -142,7 +142,7 @@
       </div>  
       <div class="row">
         <p class="title2">ROL (ENFRENTAMNIENTOS):</p>
-        <p>NOTA: Si en la ultima ronda existe una pelea subrayada en azul y los anillos y pesos son iguales eso significa que es una pelea con un gallo extra</p>
+        <p>NOTA: Si en alguna ronda existe una pelea subrayada en azul y los anillos y pesos son iguales eso significa que es una pelea con un gallo extra</p>
         @php
             $index = 0;
         @endphp

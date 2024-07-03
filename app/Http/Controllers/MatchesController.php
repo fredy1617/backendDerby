@@ -105,7 +105,7 @@ class MatchesController extends Controller
     {
         $partidos = Matchs::where('derby_id', $id)->with('roosters')->get();
 
-        $derby = Derbys::find($id);
+        $derby = Derbys::findOrFail($id);
 
         $logoImagePath = public_path('imgPDF/LogoDerby.png');
         $logoImage = $this->getImageBase64($logoImagePath);// Convertir las imágenes a base64
