@@ -19,8 +19,8 @@ class RolController extends Controller
         $derby = Derbys::findOrFail($request->id);
         $sortingOptions = [
             ['weight', 'ASC'],
-            ['ring', 'ASC'],
             ['name', 'ASC'],
+            ['ring', 'ASC'],
             ['id', 'ASC'],
             ['match_id', 'ASC'],
             ['match_id', 'DESC'],
@@ -35,14 +35,14 @@ class RolController extends Controller
 
         $response = $this->tryGeneratingEnfrentamientos($derby, $sortingOptions);
 
-        if ($response->getData()) {
+        if ($response) {
             LOGGER('ROL GENERADO CON EXITO');
 
             // Recorrer cada ronda y generar las peleas en $this->agregarTabla($enfrentamientos, $derby->id);
             $data = $response->getData()->RONDAS;
             foreach ($data as $ronda) {
                 $enfrentamientos = $ronda->PELEAS;
-                $this->agregarTabla($enfrentamientos, $derby->id);
+                $this->agregarTabla($enfrentamientos);
             }
             return response()->json([
                 'success' => true,
@@ -149,6 +149,7 @@ class RolController extends Controller
 
     private function matchGalls($derby, $gallos, $opcion = 1, $ronda = 0, &$parejas, &$enfrentamientos)
     {
+        $tolerancia = ($opcion == 1) ? $derby->tolerance : $derby->tolerance * 3;
         foreach ($gallos as $index => $gallo1) {
             // Si el gallo ya está emparejado, continuar con el siguiente
             if (in_array($gallo1, $parejas)) {
@@ -158,7 +159,7 @@ class RolController extends Controller
             foreach ($gallos as $x => $gallo2) {
                 // Evitar emparejar un gallo consigo mismo y verificar por partido, grupo y tolerancia igual
                 if ($index != $x && $gallo1['match_id'] != $gallo2['match_id'] &&
-                    ($opcion == 2 || abs($gallo1['weight'] - $gallo2['weight']) <= $derby->tolerance) &&// AQUI SI LA OPCION ES 2 quitar esta linea
+                    abs($gallo1['weight'] - $gallo2['weight']) <= $tolerancia &&
                     $gallo1['group_id'] !== $gallo2['group_id']) {
 
                     // Agregar ambos gallos a la lista de emparejados
@@ -247,7 +248,7 @@ class RolController extends Controller
                 //LOGGER($RONDAS);
                 
                 return response()->json([
-                    'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA.',
+                    'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS CON LA TOLERANCIA AL TRIPLE.',
                     'RONDAS' => $RONDAS,
                 ]);
             } else {
@@ -268,7 +269,7 @@ class RolController extends Controller
         }
     }
 
-    private function agregarTabla($enfrentamientos, $derby)
+    private function agregarTabla($enfrentamientos)
     {
         // Preparar los datos para insertar en la tabla 'rol'
         $dataInsert = array_map(function($enfrentamiento) {
