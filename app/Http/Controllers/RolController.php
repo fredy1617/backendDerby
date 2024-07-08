@@ -18,16 +18,8 @@ class RolController extends Controller
     {
         $derby = Derbys::findOrFail($request->id);
         $sortingOptions = [
-            ['weight', 'ASC'],
-            ['name', 'ASC'],
-            ['ring', 'ASC'],
-            ['id', 'ASC'],
-            ['match_id', 'ASC'],
-            ['match_id', 'DESC'],
-            ['id', 'DESC'],
-            ['name', 'DESC'],
             ['weight', 'DESC'],
-            ['ring', 'DESC'],
+            ['name', 'DESC'],
         ];
         
         // Eliminar roles anteriores del derby ANTES DE GENERAR UNO NUEVO
@@ -85,8 +77,8 @@ class RolController extends Controller
 
             // Agregar la ronda al arreglo de Rondas
             $Rondas[] = $ronda;
+            
         }
-
         return $Rondas;
     }
 
@@ -94,7 +86,12 @@ class RolController extends Controller
     {
         $parejas = [];
         $enfrentamientos = [];
-            
+
+        $ronda = ($ronda - 4)*(-1);
+        usort($gallos, function ($a, $b) {
+            return $a['weight'] <=> $b['weight'];
+        });
+
         $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
 
         return $enfrentamientos;
@@ -126,7 +123,7 @@ class RolController extends Controller
             $gallos[] = [
                 'id' => '0',
                 'ring' => 'EXTRA',
-                'weight' => $derby->min_weight,
+                'weight' => $derby->max_weight,
                 'match_id' => '0',
                 'group_id' => '0',
             ];
@@ -144,6 +141,8 @@ class RolController extends Controller
             // Set the group_id for the current gallo
             $gallo['group_id'] = $group_id;
         }
+        LOGGER ($by. $order);
+        LOGGER ($gallos);
         return ($gallos);
     }
 
@@ -202,7 +201,7 @@ class RolController extends Controller
             $RONDAS = $this->generateRondas($derby, $gallos);
             $this->balanceRounds($RONDAS, 1, 0);
             $this->balanceRounds($RONDAS, 1, 2);
-
+            
             $no_enfrentamientos = 0;
             foreach ($RONDAS as $index => $ronda) {
                 $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1);
@@ -224,7 +223,7 @@ class RolController extends Controller
             }
         }
 
-        return $this->tryGeneratingEnfrentamientosToleranceTriple($derby, $sortingOptions);
+        return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
     }
 
     private function tryGeneratingEnfrentamientosToleranceTriple($derby, $sortingOptions)
