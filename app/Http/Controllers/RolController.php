@@ -74,11 +74,10 @@ class RolController extends Controller
                     ];
                 }
             }
-
             // Agregar la ronda al arreglo de Rondas
-            $Rondas[] = $ronda;
-            
-        }
+            $Rondas[] = $ronda;            
+        }        
+        //Logger($Rondas) ;
         return $Rondas;
     }
 
@@ -96,7 +95,6 @@ class RolController extends Controller
 
         return $enfrentamientos;
     }
-
 
     private function getInfoXRondas($derby, $by, $order)
     {
@@ -141,8 +139,6 @@ class RolController extends Controller
             // Set the group_id for the current gallo
             $gallo['group_id'] = $group_id;
         }
-        LOGGER ($by. $order);
-        LOGGER ($gallos);
         return ($gallos);
     }
 
