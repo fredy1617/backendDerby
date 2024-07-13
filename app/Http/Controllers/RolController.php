@@ -20,6 +20,7 @@ class RolController extends Controller
         $sortingOptions = [
             ['weight', 'DESC'],
             ['name', 'DESC'],
+            ['ring', 'DESC'],
         ];
         
         // Eliminar roles anteriores del derby ANTES DE GENERAR UNO NUEVO
