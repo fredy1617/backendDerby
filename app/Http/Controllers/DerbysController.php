@@ -4,18 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\Derbys;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class DerbysController extends Controller
 {
     public function index()
     {
-        $areas = Derbys::all(); 
-        return response()->json($areas); 
+        $derbys = Derbys::all(); 
+        return response()->json($derbys); 
     }
 
     public function store(Request $request)
     {
-        $Derby = new Derbys($request->all());
+        $user = Auth::user();
+        $data = $request->all();
+        $data['user_id'] = $user->id;
+        $Derby = new Derbys($data);
 
         $Derby->save();
         return response()->json(['message' => 'Derby registrado con exito'], 201);
@@ -23,26 +27,19 @@ class DerbysController extends Controller
 
     public function show($id)
     {
-        $area = Derbys::find($id);
-        return response()->json($area);
+        $derby = Derbys::find($id);
+        return response()->json($derby);
     }
 
     public function update(Request $request, $id)
     {
         // Find the area by ID, or return a 404 error if not found
-        $area = Derbys::findOrFail($id);
+        $Derby = Derbys::findOrFail($id);
 
-        // Update the area with the provided data
-        $area->update($request->all());
+        // Update the Derby with the provided data
+        $Derby->update($request->all());
         
-        return response()->json(['message' => 'Area actualizada exitosamente.'], 201);
-    }
-
-    public function destroy($id)
-    {
-        Derbys::destroy($id);
-
-        return response()->json(['message' => 'Area eliminada exitosamente.'], 201);
+        return response()->json(['message' => 'Derby actualizada exitosamente.'], 201);
     }
 
 }

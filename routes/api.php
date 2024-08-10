@@ -5,7 +5,15 @@ use App\Http\Controllers\GroupController;
 use App\Http\Controllers\MatchesController;
 use App\Http\Controllers\RolController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use Illuminate\Http\Request;
 
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
+Route::middleware('auth:api')->post('/logout', [AuthController::class, 'logout']);
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
 
 Route::apiResource('derbys', DerbysController::class);
 Route::apiResource('matches', MatchesController::class);

@@ -10,6 +10,10 @@ return new class extends Migration
     {
         Schema::create('derbys', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')
+                ->constrained('users')
+                ->onDelete('cascade') // Eliminación en cascada al borrar 
+                ->nullable();
             $table->string('name');
             $table->date('date');
             $table->decimal('money', 10, 2);
