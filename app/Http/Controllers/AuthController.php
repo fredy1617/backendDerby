@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-    public function usersAll()
+    public function index()
     {
         $users = User::all(); 
         return response()->json($users); 
@@ -39,7 +39,6 @@ class AuthController extends Controller
             'lastname' => $request->lastname,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'rol' => $request->rol ?? 'user',
             'active' => $request->active ?? false,
         ]);
 
@@ -84,6 +83,27 @@ class AuthController extends Controller
         }
     
         return response()->json(['message' => '*Usuario no autenticado'], 401);
+    }
+
+    public function update(Request $request, $id)
+    {
+        // Validar que el campo 'active' es requerido y es booleano
+        $request->validate([
+            'active' => 'required|boolean',
+        ]);
+
+        // Encontrar el usuario por su ID
+        $user = User::findOrFail($id);
+
+        // Actualizar el campo 'active' del usuario
+        $user->active = $request->input('active');
+        $user->save();
+
+        // Retornar una respuesta exitosa
+        return response()->json([
+            'message' => 'Estado actualizado correctamente.',
+            'user' => $user
+        ], 200);
     }
 
 }

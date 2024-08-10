@@ -16,6 +16,7 @@ return new class extends Migration
                 ->nullable();
             $table->string('name');
             $table->date('date');
+            $table->date('date_created');
             $table->decimal('money', 10, 2);
             $table->integer('no_roosters');
             $table->integer('tolerance');

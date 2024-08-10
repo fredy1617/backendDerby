@@ -10,6 +10,6 @@ class Derbys extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'date', 'money', 'no_roosters', 'tolerance', 'min_weight', 'max_weight'
+        'user_id', 'name', 'date', 'date_created', 'money', 'no_roosters', 'tolerance', 'min_weight', 'max_weight'
     ];
 }
