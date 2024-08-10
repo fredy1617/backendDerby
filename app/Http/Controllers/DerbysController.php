@@ -11,10 +11,14 @@ class DerbysController extends Controller
 {
     public function index()
     {
-        $derbys = Derbys::all(); 
-        return response()->json($derbys); 
+        $user = Auth::user();
+        
+        // Filtrar los derbis para que solo se devuelvan los que pertenecen al usuario autenticado
+        $derbys = Derbys::where('user_id', $user->id)->get(); 
+        
+        return response()->json($derbys);
     }
-
+    
     public function store(Request $request)
     {      
         $user = Auth::user();
