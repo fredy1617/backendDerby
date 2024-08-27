@@ -8,6 +8,11 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 
+// Ruta de captura para el frontend de React
+Route::get('/{any}', function () {
+    return view('index'); // Asegúrate de que la vista apunte a tu archivo index.html
+})->where('any', '.*');
+
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::middleware('auth:api')->post('/logout', [AuthController::class, 'logout']);
