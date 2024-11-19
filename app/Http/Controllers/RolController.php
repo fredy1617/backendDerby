@@ -18,9 +18,9 @@ class RolController extends Controller
     {
         $derby = Derbys::findOrFail($request->id);
         $sortingOptions = [
+            ['ring', 'DESC'],
             ['weight', 'DESC'],
             ['name', 'DESC'],
-            ['ring', 'DESC'],
         ];
         
         // Eliminar roles anteriores del derby ANTES DE GENERAR UNO NUEVO
@@ -83,15 +83,18 @@ class RolController extends Controller
     }
 
     private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = 1)    
-    {
+    {   //AQUI SI LA OPCION ES 3 es quitar TOLERANCIA
         $parejas = [];
         $enfrentamientos = [];
 
-        $ronda = ($ronda - 4)*(-1);
+        //LOGGER("NUMERO DE RONDAS: ".$ronda);
+        
+        // Ordenar gallos por peso
         usort($gallos, function ($a, $b) {
             return $a['weight'] <=> $b['weight'];
         });
 
+        // Lógica de emparejamiento
         $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
 
         return $enfrentamientos;
@@ -223,38 +226,6 @@ class RolController extends Controller
         return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
     }
 
-    private function tryGeneratingEnfrentamientosToleranceTriple($derby, $sortingOptions)
-    {
-        foreach ($sortingOptions as $option) {
-            $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
-            $RONDAS = $this->generateRondas($derby, $gallos);
-            $this->balanceRounds($RONDAS, 1, 0);
-            $this->balanceRounds($RONDAS, 1, 2);
-
-            $no_enfrentamientos = 0;
-            foreach ($RONDAS as $index => $ronda) {
-                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 2);
-                $RONDAS[$index]['PELEAS'] = $enfrentamientos;
-                $no_enfrentamientos += count($enfrentamientos);
-            }
-
-            $Total_Peleas = count($gallos) / 2;
-            if ($Total_Peleas == $no_enfrentamientos) {
-                LOGGER('ENFRENTAMIENTOS GENERADOS CON TOLERANCIA AL TRIPLE');
-                //LOGGER($RONDAS);
-                
-                return response()->json([
-                    'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS CON LA TOLERANCIA AL TRIPLE.',
-                    'RONDAS' => $RONDAS,
-                ]);
-            } else {
-                LOGGER("ERROR PELEAS SIN EMPAREJAR PARA LA OPCIÓN SIN TOLERANCIA: {$option[0]} {$option[1]}");
-            }
-        }
-
-        return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
-    }
-
     private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
     {
         foreach ($sortingOptions as $option) {
@@ -265,7 +236,7 @@ class RolController extends Controller
 
             $no_enfrentamientos = 0;
             foreach ($RONDAS as $index => $ronda) {
-                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 3);
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 3);//AQUI SI LA OPCION ES 3 es quitar TOLERANCIA
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);
             }
