@@ -16,7 +16,10 @@ class RolController extends Controller
 {
     public function store(Request $request)
     {
+        // Buscar el derby por su ID, el cual se pasa a través de la solicitud.
         $derby = Derbys::findOrFail($request->id);
+
+        // Definir las opciones de ordenación para los gallos.
         $sortingOptions = [
             ['ring', 'DESC'],
             ['weight', 'DESC'],
@@ -26,17 +29,21 @@ class RolController extends Controller
         // Eliminar roles anteriores del derby ANTES DE GENERAR UNO NUEVO
         Rol::where('derby_id', $derby->id)->delete();
 
+        // Intentar generar los enfrentamientos, pasando el derby y las opciones de ordenación.
         $response = $this->tryGeneratingEnfrentamientos($derby, $sortingOptions);
 
+         // Si la respuesta es positiva, significa que se generaron enfrentamientos exitosamente.
         if ($response) {
             LOGGER('ROL GENERADO CON EXITO');
 
-            // Recorrer cada ronda y generar las peleas en $this->agregarTabla($enfrentamientos, $derby->id);
+            // Recorrer las rondas generadas y agregar los enfrentamientos a la base de datos.
             $data = $response->getData()->RONDAS;
             foreach ($data as $ronda) {
                 $enfrentamientos = $ronda->PELEAS;
                 $this->agregarTabla($enfrentamientos);
             }
+
+            // Devolver una respuesta con los enfrentamientos generados correctamente.
             return response()->json([
                 'success' => true,
                 'message' => $response->getData()->message,
@@ -44,6 +51,7 @@ class RolController extends Controller
             ]);
         }
 
+        // Si no se pudieron generar los enfrentamientos, devolver un error.
         LOGGER('ERROR PELEAS SIN EMPAREJAR DESPUÉS DE INTENTAR TODAS LAS OPCIONES');
         return response()->json([
             'success' => false,
@@ -54,7 +62,7 @@ class RolController extends Controller
 
     private function generateRondas($derby, $gallos)
     {
-        $Rondas = [];
+        $Rondas = [];// Inicializar el arreglo de rondas.
 
         // Iterar sobre cada posición de gallo en la ronda
         for ($i = 0; $i < $derby->no_roosters; $i++) {
@@ -82,19 +90,19 @@ class RolController extends Controller
         return $Rondas;
     }
 
-    private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = 1)    
-    {   //AQUI SI LA OPCION ES 3 es quitar TOLERANCIA
+    private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = true)    
+    {   
         $parejas = [];
         $enfrentamientos = [];
 
         //LOGGER("NUMERO DE RONDAS: ".$ronda);
         
-        // Ordenar gallos por peso
+         // Ordenar gallos por peso (de mayor a menor)
         usort($gallos, function ($a, $b) {
             return $a['weight'] <=> $b['weight'];
         });
 
-        // Lógica de emparejamiento
+        // Generar los enfrentamientos basados en el emparejamiento de gallos
         $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
 
         return $enfrentamientos;
@@ -102,10 +110,11 @@ class RolController extends Controller
 
     private function getInfoXRondas($derby, $by, $order)
     {
+        // Obtener todos los partidos para el derby
         $partidos = Matchs::select('id')
                             ->where('derby_id', $derby->id)->get();
         
-
+         // Recorrer los partidos para obtener la información de los gallos
         foreach ($partidos as $partido) {
             $gallos = Roosters::select('id', 'ring', 'weight', 'match_id')
                             ->where('match_id', $partido->id)
@@ -114,13 +123,14 @@ class RolController extends Controller
             $partido['gallos']=$gallos;            
         }
 
+        // Combinar los gallos de todos los partidos
         $gallos = new Collection();
             foreach ($partidos as $partido) {
                 $gallos = $gallos->merge($partido->gallos);
         }
 
+        // Verificar si hay un número impar de gallos, y si es así, agregar un gallo extra
         $no_gallos = count($gallos);// Calcular el número de gallos)
-
         if ($no_gallos % 2 != 0) {
             $gallos[] = [
                 'id' => '0',
@@ -131,46 +141,52 @@ class RolController extends Controller
             ];
         }
 
-        //5.- RECORRER LOS GALLOS PARA AGREGAR GRUPO
+         // Asignar un grupo a cada gallo
         $grupo = 1;
         foreach ($gallos as $gallo) {
             $grupo --;
-            // Fetch the group_id from the database or use the default $grupo value
             $group_id = Matchs::where('matchs.id', $gallo['match_id'])
             ->join('group_matches', 'matchs.id', '=', 'group_matches.match_id')
             ->value('group_matches.group_id') ?? $grupo;
-
-            // Set the group_id for the current gallo
             $gallo['group_id'] = $group_id;
         }
+
         return ($gallos);
     }
 
-    private function matchGalls($derby, $gallos, $opcion = 1, $ronda = 0, &$parejas, &$enfrentamientos)
+    private function matchGalls($derby, $gallos, $opcion, $ronda = 0, &$parejas, &$enfrentamientos)
     {
-        $tolerancia = ($opcion == 1) ? $derby->tolerance : $derby->tolerance * 3;
+        // Usamos un array para almacenar los IDs de los gallos emparejados, evitando la búsqueda secuencial repetida
+        $gallosEmparejados = [];
         foreach ($gallos as $index => $gallo1) {
-            // Si el gallo ya está emparejado, continuar con el siguiente
-            if (in_array($gallo1, $parejas)) {
+            // Si el gallo ya está emparejado, saltamos al siguiente
+            if (in_array($gallo1['id'], $gallosEmparejados)) {
                 continue;
             }
-        
+
             foreach ($gallos as $x => $gallo2) {
                 // Evitar emparejar un gallo consigo mismo y verificar por partido, grupo y tolerancia igual
                 if ($index != $x && $gallo1['match_id'] != $gallo2['match_id'] &&
-                    ($opcion == 3 || abs($gallo1['weight'] - $gallo2['weight']) <= $tolerancia) &&// AQUI SI LA OPCION ES 3 quitar esta linea
-                    $gallo1['group_id'] !== $gallo2['group_id']) {
+                    (!$opcion || abs($gallo1['weight'] - $gallo2['weight']) <= $derby->tolerance) && // Si opcion es false, no se evalúa la tolerancia
+                    $gallo1['group_id'] !== $gallo2['group_id']&& 
+                    !in_array($gallo2['id'], $gallosEmparejados)) {
 
-                    // Agregar ambos gallos a la lista de emparejados
+                    // Emparejar los gallos
                     $parejas[] = $gallo1;
                     $parejas[] = $gallo2;
 
+                    // Agregar los gallos a los emparejados
+                    $gallosEmparejados[] = $gallo1['id'];
+                    $gallosEmparejados[] = $gallo2['id'];
+
+                    // Si uno de los gallos es extra (id=0), asignar el id del otro gallo
                     if ($gallo1['id'] == 0) {
                         $gallo1['id'] = $gallo2['id'];
                     }
                     if ($gallo2['id'] == 0) {
                         $gallo2['id'] = $gallo1['id'];
                     }
+                    // Crear el enfrentamiento
                     $enfrentamientos[] = [
                         'derby_id' => $derby->id,
                         'ronda' => $ronda,
@@ -178,24 +194,24 @@ class RolController extends Controller
                         'gallo2_id' => $gallo2['id'],
                         'condicion' => 'Pelear',
                     ];
-        
+
                     // Eliminar ambos gallos del array original
                     unset($gallos[$index]);
                     unset($gallos[$x]);
-        
+
                     // Salir del bucle interno después de emparejar un gallo
                     break;
                 }
             }
-        }  
-        //LOGGER('GALLOS RESTANTES: ');
-        //LOGGER($gallos);
+        }
 
+        // Retornar los gallos restantes (los que no fueron emparejados)
         return array_values($gallos);
     }
 
     private function tryGeneratingEnfrentamientos($derby, $sortingOptions)
     {
+        // Intentar generar enfrentamientos con diferentes opciones de ordenación
         foreach ($sortingOptions as $option) {
             $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
             $RONDAS = $this->generateRondas($derby, $gallos);
@@ -228,6 +244,7 @@ class RolController extends Controller
 
     private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
     {
+        // Intentar generar enfrentamientos con diferentes opciones de ordenación
         foreach ($sortingOptions as $option) {
             $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
             $RONDAS = $this->generateRondas($derby, $gallos);
@@ -236,7 +253,7 @@ class RolController extends Controller
 
             $no_enfrentamientos = 0;
             foreach ($RONDAS as $index => $ronda) {
-                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, 3);//AQUI SI LA OPCION ES 3 es quitar TOLERANCIA
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, false);//AQUI SI LA OPCION ES FALSE es quitar TOLERANCIA
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);
             }
@@ -257,7 +274,8 @@ class RolController extends Controller
 
         return null;
     }
-
+    
+    // Función auxiliar para equilibrar las rondas y sus enfrentamientos
     private function balanceRounds(&$RONDAS, $sourceIndex, $targetIndex)
     {
         if (count($RONDAS[$targetIndex]['gallos']) % 2 != 0) {
