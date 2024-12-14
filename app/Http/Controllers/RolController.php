@@ -113,8 +113,8 @@ class RolController extends Controller
 
         // Determinar cuántos gallos por ronda basándonos en el total de gallos y el número de rondas
         $baseGallosPorRonda = floor($totalGallos / $derby->no_roosters);// Gallos aproximados por ronda
-        LOGGER('TOTAL GALLOS: '.$totalGallos);
-        LOGGER('GALLOS POR RONDA (APORX): '.$baseGallosPorRonda);
+        //LOGGER('TOTAL GALLOS: '.$totalGallos);
+        //LOGGER('GALLOS POR RONDA (APORX): '.$baseGallosPorRonda);
 
         // Asignar gallos a las rondas, distribuyendo el resto si es necesario
         for ($i = 0; $i < $derby->no_roosters; $i++) {
@@ -130,7 +130,7 @@ class RolController extends Controller
                 'gallos' => [], // Inicializar arreglo para los gallos de esta ronda
             ];
 
-            LOGGER('GALLOS POR RONDA: '.$cantidadGallos);
+            //LOGGER('GALLOS POR RONDA: '.$cantidadGallos);
             // Recorrer todos los gallos y agregar los gallos según el patrón deseado
             foreach ($gallos as $index => $gallo) {
                 if ($index % $derby->no_roosters == $i) {
@@ -143,7 +143,7 @@ class RolController extends Controller
                     ];
                 }
             }
-            LOGGER('GALLLOS QUE SE ASIGNARON: '.count($ronda['gallos']).' DE LA RONDA N° '.$i + 1);
+            //LOGGER('GALLLOS QUE SE ASIGNARON: '.count($ronda['gallos']).' DE LA RONDA N° '.$i + 1);
             // Agregar la ronda al arreglo de Rondas
             $Rondas[] = $ronda;
         }
@@ -172,7 +172,7 @@ class RolController extends Controller
         foreach ($Rondas as &$ronda) {
             $gallosActuales = count($ronda['gallos']);
             $diferencia = $gallosActuales - $ronda['cantidadGallos'];
-            LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE: '.$gallosActuales). ' DIFERENCIA: '.$diferencia;
+            //LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE: '.$gallosActuales). ' DIFERENCIA: '.$diferencia;
     
             if ($diferencia > 0) {
                 // Sobran gallos, moverlos a la lista de gallos extra de manera aleatoria
@@ -191,7 +191,7 @@ class RolController extends Controller
                 }
             }
 
-            LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE BALANCE: '.count($ronda['gallos']));
+            //LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE BALANCE: '.count($ronda['gallos']));
             //LOGGER('GALLOS EXTRA LISTA: ');
             //LOGGER($gallosExtra);
         }
@@ -288,12 +288,14 @@ class RolController extends Controller
     {
         // Intentar generar enfrentamientos con diferentes opciones de ordenación
         foreach ($sortingOptions as $option) {
+             // Obtener gallos según la opción seleccionada
             $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
             $RONDAS = $this->generateRondas($derby, $gallos);            
             
             $no_enfrentamientos = 0;
+
             foreach ($RONDAS as $index => $ronda) {
-                LOGGER('GALLLOS: '.count($RONDAS[$index]['gallos']).' DE LA RONDA N° '.$index + 1);
+                //LOGGER('GALLLOS: '.count($RONDAS[$index]['gallos']).' DE LA RONDA N° '.$index + 1);
                 $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1);
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);                
@@ -332,7 +334,7 @@ class RolController extends Controller
     
             // Generar enfrentamientos para cada ronda
             foreach ($RONDAS as $index => $ronda) {
-                LOGGER('GALLLOS: ' . count($RONDAS[$index]['gallos']) . ' DE LA RONDA N° ' . ($index + 1));
+                //LOGGER('GALLLOS: ' . count($RONDAS[$index]['gallos']) . ' DE LA RONDA N° ' . ($index + 1));
                 $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, false); // false = Sin tolerancia
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);
