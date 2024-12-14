@@ -60,54 +60,6 @@ class RolController extends Controller
 
     }
 
-    private function generateRondas($derby, $gallos)
-    {
-        $Rondas = [];// Inicializar el arreglo de rondas.
-
-        // Iterar sobre cada posición de gallo en la ronda
-        for ($i = 0; $i < $derby->no_roosters; $i++) {
-            $ronda = [
-                'no' => $i, // Número de la ronda
-                'gallos' => [], // Inicializar arreglo para los gallos de esta ronda
-            ];
-
-            // Recorrer todos los gallos y agregar los gallos según el patrón deseado
-            foreach ($gallos as $index => $gallo) {
-                if ($index % $derby->no_roosters == $i) {
-                    $ronda['gallos'][] = [
-                        'id' => $gallo['id'],
-                        'ring' => $gallo['ring'],
-                        'weight' => $gallo['weight'],
-                        'match_id' => $gallo['match_id'],
-                        'group_id' => $gallo['group_id'],
-                    ];
-                }
-            }
-            // Agregar la ronda al arreglo de Rondas
-            $Rondas[] = $ronda;            
-        }        
-        //Logger($Rondas) ;
-        return $Rondas;
-    }
-
-    private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = true)    
-    {   
-        $parejas = [];
-        $enfrentamientos = [];
-
-        //LOGGER("NUMERO DE RONDAS: ".$ronda);
-        
-         // Ordenar gallos por peso (de mayor a menor)
-        usort($gallos, function ($a, $b) {
-            return $a['weight'] <=> $b['weight'];
-        });
-
-        // Generar los enfrentamientos basados en el emparejamiento de gallos
-        $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
-
-        return $enfrentamientos;
-    }
-
     private function getInfoXRondas($derby, $by, $order)
     {
         // Obtener todos los partidos para el derby
@@ -151,8 +103,131 @@ class RolController extends Controller
             $gallo['group_id'] = $group_id;
         }
 
-        return ($gallos);
+        return ($gallos);       
     }
+
+    private function generateRondas($derby, $gallos)
+    {
+        $Rondas = [];// Inicializar el arreglo de rondas.
+        $totalGallos = count($gallos);
+
+        // Determinar cuántos gallos por ronda basándonos en el total de gallos y el número de rondas
+        $baseGallosPorRonda = floor($totalGallos / $derby->no_roosters);// Gallos aproximados por ronda
+        LOGGER('TOTAL GALLOS: '.$totalGallos);
+        LOGGER('GALLOS POR RONDA (APORX): '.$baseGallosPorRonda);
+
+        // Asignar gallos a las rondas, distribuyendo el resto si es necesario
+        for ($i = 0; $i < $derby->no_roosters; $i++) {
+            // Si el número base de gallos es impar, alternamos la distribución
+            $cantidadGallos = $baseGallosPorRonda;
+            if ($cantidadGallos % 2 != 0) {
+                 // Si el índice de la ronda es par, sumamos 1 gallo, si es impar, restamos 1
+                 $cantidadGallos = ($i % 2 == 0) ? $cantidadGallos + 1 : $cantidadGallos - 1;
+            }
+            $ronda = [
+                'no' => $i, // Número de la ronda
+                'cantidadGallos' => $cantidadGallos, // Número de la ronda
+                'gallos' => [], // Inicializar arreglo para los gallos de esta ronda
+            ];
+
+            LOGGER('GALLOS POR RONDA: '.$cantidadGallos);
+            // Recorrer todos los gallos y agregar los gallos según el patrón deseado
+            foreach ($gallos as $index => $gallo) {
+                if ($index % $derby->no_roosters == $i) {
+                    $ronda['gallos'][] = [
+                        'id' => $gallo['id'],
+                        'ring' => $gallo['ring'],
+                        'weight' => $gallo['weight'],
+                        'match_id' => $gallo['match_id'],
+                        'group_id' => $gallo['group_id'],
+                    ];
+                }
+            }
+            LOGGER('GALLLOS QUE SE ASIGNARON: '.count($ronda['gallos']).' DE LA RONDA N° '.$i + 1);
+            // Agregar la ronda al arreglo de Rondas
+            $Rondas[] = $ronda;
+        }
+
+        //SI ES IMPAR HACEMOS EL BALANCE DE GALLOS
+        if ($baseGallosPorRonda % 2 != 0) {
+            $this->balanceRounds($Rondas);
+        }        
+
+        //Logger($Rondas) ;
+        return $Rondas;
+    }
+
+    // Función auxiliar para equilibrar las rondas y sus enfrentamientos
+    private function balanceRounds(&$Rondas)
+    {
+        // Ordenar las rondas por menor cantidad de gallos
+        usort($Rondas, function ($a, $b) {
+            return $a['cantidadGallos'] - $b['cantidadGallos'];
+        });
+    
+        // Lista de gallos sobrantes para redistribuir
+        $gallosExtra = [];
+    
+        // Recorrer las rondas para ajustar
+        foreach ($Rondas as &$ronda) {
+            $gallosActuales = count($ronda['gallos']);
+            $diferencia = $gallosActuales - $ronda['cantidadGallos'];
+            LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE: '.$gallosActuales). ' DIFERENCIA: '.$diferencia;
+    
+            if ($diferencia > 0) {
+                // Sobran gallos, moverlos a la lista de gallos extra de manera aleatoria
+                for ($k = 0; $k < $diferencia; $k++) {
+                    $randomIndex = array_rand($ronda['gallos']); // Índice aleatorio
+                    $gallosExtra[] = $ronda['gallos'][$randomIndex];
+                    unset($ronda['gallos'][$randomIndex]);
+                    $ronda['gallos'] = array_values($ronda['gallos']); // Reindexar el arreglo
+                }
+            } elseif ($diferencia < 0) {
+                // Faltan gallos, tomar de la lista de gallos extra
+                $faltan = abs($diferencia);
+                while ($faltan > 0 && !empty($gallosExtra)) {
+                    $ronda['gallos'][] = array_shift($gallosExtra);
+                    $faltan--;
+                }
+            }
+
+            LOGGER('GALLOS DE LA RONDA: '. $ronda['cantidadGallos']. ' TIENE ACTUALMENTE BALANCE: '.count($ronda['gallos']));
+            //LOGGER('GALLOS EXTRA LISTA: ');
+            //LOGGER($gallosExtra);
+        }
+    
+        // Verificar que todas las rondas tengan un número par de gallos
+        foreach ($Rondas as &$ronda) {
+            if (count($ronda['gallos']) % 2 != 0 && !empty($gallosExtra)) {
+                $ronda['gallos'][] = array_shift($gallosExtra);
+            }
+        }
+
+        // Ordenar las rondas por mayor cantidad de gallos
+        usort($Rondas, function ($a, $b) {
+            return  $b['cantidadGallos'] - $a['cantidadGallos'];
+        });
+    }
+
+    private function generateEnfrentamientos($derby, $gallos, $ronda, $opcion = true)    
+    {   
+        $parejas = [];
+        $enfrentamientos = [];
+
+        //LOGGER("NUMERO DE RONDAS: ".$ronda);
+        
+         // Ordenar gallos por peso (de mayor a menor)
+        usort($gallos, function ($a, $b) {
+            return $a['weight'] <=> $b['weight'];
+        });
+
+        // Generar los enfrentamientos basados en el emparejamiento de gallos
+        $gallos = $this->matchGalls($derby, $gallos, $opcion, $ronda, $parejas, $enfrentamientos);
+
+        return $enfrentamientos;
+    }
+
+    
 
     private function matchGalls($derby, $gallos, $opcion, $ronda = 0, &$parejas, &$enfrentamientos)
     {
@@ -214,12 +289,11 @@ class RolController extends Controller
         // Intentar generar enfrentamientos con diferentes opciones de ordenación
         foreach ($sortingOptions as $option) {
             $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
-            $RONDAS = $this->generateRondas($derby, $gallos);
-            $this->balanceRounds($RONDAS, 1, 0);
-            $this->balanceRounds($RONDAS, 1, 2);
+            $RONDAS = $this->generateRondas($derby, $gallos);            
             
             $no_enfrentamientos = 0;
             foreach ($RONDAS as $index => $ronda) {
+                LOGGER('GALLLOS: '.count($RONDAS[$index]['gallos']).' DE LA RONDA N° '.$index + 1);
                 $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1);
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);                
@@ -242,48 +316,51 @@ class RolController extends Controller
         return $this->tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions);
     }
 
-    private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions)
+    private function tryGeneratingEnfrentamientosWithoutTolerance($derby, $sortingOptions, $maxAttempts = 6) 
     {
-        // Intentar generar enfrentamientos con diferentes opciones de ordenación
-        foreach ($sortingOptions as $option) {
-            $gallos = $this->getInfoXRondas($derby, $option[0], $option[1]);
+        // Intentar hasta $maxAttempts veces
+        $attempts = 0;
+        while ($attempts < $maxAttempts) {
+            // Elegir una opción al azar
+            $randomOption = $sortingOptions[array_rand($sortingOptions)];
+    
+            // Obtener gallos según la opción seleccionada
+            $gallos = $this->getInfoXRondas($derby, $randomOption[0], $randomOption[1]);
             $RONDAS = $this->generateRondas($derby, $gallos);
-            $this->balanceRounds($RONDAS, 1, 0);
-            $this->balanceRounds($RONDAS, 1, 2);
-
+    
             $no_enfrentamientos = 0;
+    
+            // Generar enfrentamientos para cada ronda
             foreach ($RONDAS as $index => $ronda) {
-                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, false);//AQUI SI LA OPCION ES FALSE es quitar TOLERANCIA
+                LOGGER('GALLLOS: ' . count($RONDAS[$index]['gallos']) . ' DE LA RONDA N° ' . ($index + 1));
+                $enfrentamientos = $this->generateEnfrentamientos($derby, $RONDAS[$index]['gallos'], $index + 1, false); // false = Sin tolerancia
                 $RONDAS[$index]['PELEAS'] = $enfrentamientos;
                 $no_enfrentamientos += count($enfrentamientos);
             }
-
+    
             $Total_Peleas = count($gallos) / 2;
+    
+            // Validar si se generaron todas las peleas esperadas
             if ($Total_Peleas == $no_enfrentamientos) {
-                LOGGER('ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA');
-                //LOGGER($RONDAS);
-                
+                LOGGER("ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA: {$randomOption[0]} {$randomOption[1]}");
                 return response()->json([
                     'message' => '¡ADVERTENCIA!  =>  ENFRENTAMIENTOS GENERADOS SIN TOLERANCIA.',
                     'RONDAS' => $RONDAS,
                 ]);
-            } else {
-                LOGGER("ERROR PELEAS SIN EMPAREJAR PARA LA OPCIÓN SIN TOLERANCIA: {$option[0]} {$option[1]}");
+            }else{
+                LOGGER("ERROR ENFRENTAMIENTOS NO GENERADOS SIN TOLERANCIA: {$randomOption[0]} {$randomOption[1]}");
             }
-        }
-
-        return null;
-    }
     
-    // Función auxiliar para equilibrar las rondas y sus enfrentamientos
-    private function balanceRounds(&$RONDAS, $sourceIndex, $targetIndex)
-    {
-        if (count($RONDAS[$targetIndex]['gallos']) % 2 != 0) {
-            if (isset($RONDAS[$sourceIndex]) && count($RONDAS[$sourceIndex]['gallos']) > 0) {
-                $galloMovido = array_shift($RONDAS[$sourceIndex]['gallos']);
-                $RONDAS[$targetIndex]['gallos'][] = $galloMovido;
-            }
+            // Incrementar el contador de intentos
+            $attempts++;
         }
+    
+        // Si no se pudo generar en 5 intentos
+        LOGGER("ERROR PELEAS SIN EMPAREJAR DESPUES DE 5 INTENTOS.");
+        return response()->json([
+            'message' => 'No se pudieron generar enfrentamientos sin tolerancia después de 5 intentos.',
+            'RONDAS' => [],
+        ], 400); // Código 400 para indicar un error
     }
 
     private function agregarTabla($enfrentamientos)
